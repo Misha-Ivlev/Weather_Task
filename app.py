@@ -1,123 +1,156 @@
-import requests
-import datetime
-import http.client
+import os
+import err
 import const
-
-def main():
-    print("\nЗдравствуйте!\n"\
-          "Вы запустили консольное приложение для определения погоды.")
-    while True:
-        print("\nСписок команд:\n"\
-            "1 - определить погоду в любом городе\n"\
-            "2 - определить погоду в своём городе\n"\
-            "3 - увидеть историю запросов\n"\
-            "4 - очистить историю запросов\n"\
-            "5 - завершить работу приложения\n")
-        command = input("Выберите то, что вы хотите сделать: ")
-        match command:
-            case "1":
-                city = input("Введите название города: ")
-                info = get_weather_by_city({"output": city, "success": True})
-                output = output_constructor(info)
-                print(output)
-                if info["success"]:
-                    const.history.append(output)
-            case "2":
-                my_ip = get_my_ip_adress()
-                city = get_city_by_ip(my_ip)
-                info = get_weather_by_city(city)
-                output = output_constructor(info)
-                print(output)
-                if info["success"]:
-                    const.history.append(output)
-            case "3":
-                try:
-                    number = int(input("Введите количество записей которые вы хотите получить: "))
-                    if  number > 0:
-                        get_history(int(number))
-                    else:
-                        print('Количество записей может быть только числом больше нуля.')
-                except ValueError:
-                    print('Количество записей может быть только целым числом.')
-            case "4":
-                const.history = []
-                print("История запросов очищена.")
-            case "5":
-                print("До новых встреч!")
-                break
-            case _:
-                print("Неверная команда, внимательнее прочитайте список команд.")
+import requests
+import geocoder
+import datetime
+import urllib.request
 
 
-def get_my_ip_adress() -> {str: str, str: bool}:
-    try:
-        my_ip_adress = http.client.HTTPConnection("ifconfig.me")
-        my_ip_adress.request("GET", "/ip")
-        return {"output": my_ip_adress.getresponse().read().decode(), "success": True}
-    except:
-        return {"output": "Неизвестный IP. Возможно отсутсвует подключение к сети.", "success": False}
+class Weather:
+    def __init__(self, code, date=None, city=None, desc=None, temp=None, like=None, wind=None):
+        self.code = code
+        self.date = date
+        self.city = city
+        self.desc = desc
+        self.temp = temp
+        self.like = like
+        self.wind = wind
 
-
-def get_city_by_ip(ip_adress: {str: str, str: bool}) -> {str: str, str: bool}:
-    if ip_adress["success"]:
-        try:
-            response = requests.get(f'http://ip-api.com/json/{ip_adress["output"]}').json()
-            return {"output": response["city"], "success": True}
-        except requests.exceptions.ConnectionError:
-            return {"output": "Ошибка определения города по IP. Проверьте подключение к сети.", "success": False}
-    else:
-        return {"output": ip_adress["output"], "success": False}
-
-
-def get_weather_by_city(city: {str: str, str: bool}) -> {str: str, str: bool}:
-    if city["success"]:
-        city = city["output"]
-        try:
-            response = requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={const.api_key}", timeout=5)
-            return {"output": response.json(), "success": True}
-        except requests.exceptions.ConnectionError:
-            return {"output": "Отсутствует связь с сервером. Проверьте подключение к сети.", "success": False}
-        except requests.exceptions.ReadTimeout:
-            return {"output": "Превышено время ожидания. Попробуйте позже.", "success": False}
-    else:
-        return {"output": city["output"], "success": False}
-
-
-def output_constructor(weather_info: {str: dict, str: bool}) -> str:
-    if weather_info["success"]:
-        weather_info = weather_info["output"]
-        match weather_info["cod"]:
+    def get(self):
+        match self.code:
             case 200:
-                output =\
-                    f"Текущие дата и время: {datetime.datetime.fromtimestamp(weather_info['dt'])}\n"\
-                    f"Название города:      {weather_info['name']}\n"\
-                    f"Погодные условия:     {weather_info['weather'][0]['description']}\n"\
-                    f"Текущая температура:  {round(weather_info['main']['temp'] - 273.15, 2)} градусов по цельсию\n"\
-                    f"Ощущается как:        {round(weather_info['main']['feels_like'] - 273.15, 2)} градусов по цельсию\n"\
-                    f"Скорость ветра:       {weather_info['wind']['speed']} м/c"
+                return\
+                    'Текущие дата и время: ' + str(datetime.datetime.fromtimestamp(self.date)) + '\n'\
+                    'Название города:      ' + self.city + '\n'\
+                    'Погодные условия:     ' + self.desc + '\n'\
+                    'Текущая температура:  ' + str(self.temp) + ' градусов по Цельсию\n'\
+                    'Ощущается как:        ' + str(self.like) + ' градусов по Цельсию\n'\
+                    'Скорость ветра:       ' + str(self.wind) + ' м/c\n'
             case 400:
-                output = "Неверный запрос. Возможно Вы допустили ошибку в названии города."
+                return 'Неверный запрос. Возможно Вы допустили ошибку в названии города.'
             case 401:
-                output = "Нет доступа. Возможно указан неверный или неработающий API-ключ."
+                return 'Нет доступа. Возможно указан неверный или неработающий API-ключ.'
             case '404':
-                output = "Данные не найдены."
+                return 'Данные не найдены.'
             case 429:
-                output = "Превышен лимит запросов."
+                return 'Превышен лимит запросов.'
             case _:
-                output = "Неизвестная ошибка."
-    else:
-        output = weather_info["output"]
-    return output
+                return 'Неизвестная ошибка.'
 
 
-def get_history(number: int) -> str:
-    if len(const.history) >= number:
-        for info in const.history[-number:]:
-            print(info)
-            print()
-    else:
-        print("В истории запросов нет столько записей. Показываю всё, что есть:")
-        for info in const.history:
-            print(info)
-            print()
+def get_weather(code: int):
+    try:
+        match code:
+            case 1:
+                city_name = input(const.city_enter)
+            case 2:
+                city_name = get_my_city()
+        country_code = get_country_code_by_city(city_name)
+        weather = get_weather_by_country_code(country_code)
+        if weather.code == 200:
+            add_to_history(weather.get())
+        print(weather.get())
+    except err.CityError:
+        print(const.city_not_exist)
+    except ConnectionError:
+        print(const.connection_error)
+    except TimeoutError:
+        print(const.timeout_error)
+
+
+def get_country_code_by_city(city: str) -> dict:
+    '''
+    Эта функция на вход получает название города и прибавляет к нему код страны.
+    '''
+    try:
+        params = {'q': city, 'limit': '1', 'appid': const.key}
+        response = requests.get(const.url_geo, params=params, timeout=5).json()
+        if response:
+            return response[0]['name'] + ',' + response[0]['country']
+        else:
+            raise err.CityError()
+    except requests.exceptions.ConnectionError:
+        raise ConnectionError()
+    except requests.exceptions.ReadTimeout:
+        raise TimeoutError()
+
+
+def get_weather_by_country_code(country_code: dict) -> Weather:
+    try:
+        params = {'q': country_code, 'units': 'metric', 'lang': 'ru', 'appid': const.key}
+        response = requests.get(const.url, params=params, timeout=5).json()
+        if response['cod'] == 200:
+            weather = Weather(response['cod'],
+                              response['dt'],
+                              response['name'],
+                              response['weather'][0]['description'],
+                              response['main']['temp'],
+                              response['main']['feels_like'],
+                              response['wind']['speed'])
+        else:
+            weather = Weather(response['cod'])
+        return weather
+    except requests.exceptions.ConnectionError:
+        raise ConnectionError()
+    except requests.exceptions.ReadTimeout:
+        raise TimeoutError()
+    except TypeError:
+        pass
+
+
+def get_my_city() -> str:
+    '''
+    Функция возвращает название Вашего города.
+    '''
+    try:
+        if internet_on():
+            return geocoder.ip('me').city
+    except Exception:
+        raise ConnectionError()
+
+
+def add_to_history(entry: str):
+    history = open(os.path.dirname(__file__)+'\history.txt', 'a', encoding='utf-8')
+    history.write(entry + const.separator)
+    history.close()
+
+
+def clear_history():
+    open(os.path.dirname(__file__)+'\history.txt', 'w', encoding='utf-8')
+
+
+def show_history():
+    try:
+        num = int(input(const.how_much_history).strip())
+        if  num > 0:
+            history = open(os.path.dirname(__file__)+'\history.txt', 'r', encoding='utf-8')
+            history = history.read()
+            history = history.split(const.separator)
+            history.reverse()
+            history = history[1:]
+            num = int(num)
+            if not history:
+                print(const.no_history)
+            elif len(history) < num:
+                print(const.short_history)
+                for i in range(len(history)):
+                    print(history[i])
+            else:
+                for i in range(num):
+                    print(history[i])
+        else:
+                print(const.wrong_num)            
+    except TypeError:
+        print(const.wrong_num)
+    except ValueError:
+        print(const.wrong_num)
+
+
+def internet_on():
+    try:
+        urllib.request.urlopen("http://google.com")
+        return True
+    except IOError:
+        return False
 
