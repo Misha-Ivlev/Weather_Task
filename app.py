@@ -8,9 +8,10 @@ import urllib.request
 
 
 class Weather:
-    def __init__(self, code, date=None, city=None, desc=None, temp=None, like=None, wind=None):
+    def __init__(self, code, date=None, timz=None, city=None, desc=None, temp=None, like=None, wind=None):
         self.code = code
         self.date = date
+        self.timz = timz
         self.city = city
         self.desc = desc
         self.temp = temp
@@ -20,8 +21,19 @@ class Weather:
     def get(self):
         match self.code:
             case 200:
+                if self.timz >= 0:
+                    timezone = '+' + str(self.timz//3600) + ':'
+                    minutes = str((self.timz%3600)//60)
+                else:
+                    timezone = '-' + str(-self.timz//3600) + ':'
+                    minutes = str((-self.timz%3600)//60)
+                
+                if len(minutes) < 2:
+                    timezone += minutes + '0'
+                else:
+                    timezone += minutes
                 return\
-                    'Текущие дата и время: ' + str(datetime.datetime.fromtimestamp(self.date)) + '\n'\
+                    'Текущие дата и время: ' + str(datetime.datetime.fromtimestamp(self.date)) + ' (' + timezone + ')\n'\
                     'Название города:      ' + self.city + '\n'\
                     'Погодные условия:     ' + self.desc + '\n'\
                     'Текущая температура:  ' + str(self.temp) + ' градусов по Цельсию\n'\
@@ -83,6 +95,7 @@ def get_weather_by_country_code(country_code: dict) -> Weather:
         if response['cod'] == 200:
             weather = Weather(response['cod'],
                               response['dt'],
+                              response['timezone'],
                               response['name'],
                               response['weather'][0]['description'],
                               response['main']['temp'],
